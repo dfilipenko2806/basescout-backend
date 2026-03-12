@@ -321,6 +321,21 @@ app.post("/predictions/create", async (req, res) => {
   }
 });
 
+/* ================= PREDICTIONS ROUTE ================= */
+app.get("/predictions", async (req, res) => {
+  try {
+    const now = new Date();
+    const predictions = await Prediction.find({
+      endDate: { $gte: now } // только активные
+    }).sort({ createdAt: -1 });
+
+    res.json(predictions);
+  } catch (err) {
+    console.error("Predictions GET error:", err);
+    res.status(500).json([]);
+  }
+});
+
 /* ================= START SERVER ================= */
 async function startServer() {
   try {
