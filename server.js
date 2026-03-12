@@ -290,6 +290,37 @@ app.get("/stats", async (req, res) => {
   }
 });
 
+/* ================= CREATE PREDICTION (ADMIN ONLY) ================= */
+app.post("/predictions/create", async (req, res) => {
+  try {
+    // 🔑 Проверка секретного ключа
+    const apiKey = req.headers["x-api-key"];
+    if (apiKey !== process.env.ADMIN_API_KEY) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const { question, endDate } = req.body;
+
+    if (!question || !endDate) {
+      return res.status(400).json({ error: "Missing question or endDate" });
+    }
+
+    // Создаем новый предикт в MongoDB
+    const newPrediction = await Prediction.create({
+      question,
+      createdAt: new Date(),
+      endDate: new Date(endDate),
+      resolved: false,
+      contractId: Number(req.body.contractId || Date.now()) // временный ID, потом заменяется при публикации на контракт
+    });
+
+    res.json({ success: true, prediction: newPrediction });
+  } catch (err) {
+    console.error("Create prediction error:", err);
+    res.status(500).json({ error: "Failed to create prediction" });
+  }
+});
+
 /* ================= START SERVER ================= */
 async function startServer() {
   try {
