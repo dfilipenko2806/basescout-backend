@@ -5,7 +5,7 @@ import mongoose from "mongoose";
 import { ethers } from "ethers";
 import multer from "multer";
 
-import { updateProfile } from "./users.js";
+import { updateProfile, getLeaderboard } from "./users.js"; // добавил getLeaderboard
 import { uploadToIPFS } from "./upload.js";
 
 import User from "./models/User.js";
@@ -25,7 +25,6 @@ const upload = multer({
 });
 
 // === ИНИЦИАЛИЗАЦИЯ WebSocket PROVIDER ===
-// ethers v6: второй аргумент должен быть network name или chainId, объект с timeout нельзя
 const provider = new ethers.WebSocketProvider(process.env.RPC_URL);
 
 /* ================= CORE CONTRACT ================= */
@@ -231,6 +230,16 @@ app.get("/points-history/:address", async (req, res) => {
     res.json(history);
   } catch (err) {
     console.error("Points history GET error:", err);
+    res.status(500).json([]);
+  }
+});
+
+app.get("/leaderboard", async (req, res) => {
+  try {
+    const leaderboard = await getLeaderboard(); // функция из users.js
+    res.json(leaderboard);
+  } catch (err) {
+    console.error("Leaderboard GET error:", err);
     res.status(500).json([]);
   }
 });
