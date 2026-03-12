@@ -5,13 +5,10 @@ import mongoose from "mongoose";
 import { ethers } from "ethers";
 import multer from "multer";
 
-import { updateProfile, getLeaderboard } from "./users.js";
-import { uploadToIPFS } from "./upload.js";
-
 import User from "./models/User.js";
 import PointsHistory from "./models/PointsHistory.js";
 import Prediction from "./models/Prediction.js";
-import Referral from "./models/Referral.js"; // новая модель
+import Referral from "./models/Referral.js";
 
 dotenv.config();
 
@@ -31,17 +28,12 @@ const provider = new ethers.WebSocketProvider(process.env.RPC_URL);
 const coreAbi = [
   "function points(address user) view returns(uint256)",
   "function streak(address user) view returns(uint256)",
-  "function badgeMinted(address user, uint256 level) view returns(bool)",
+  "function badgeMinted(address user,uint256 level) view returns(bool)",
   "event CheckedIn(address user,uint256 streak,uint256 totalPoints)",
   "event PointsAdded(address user,uint256 amount)",
   "event BadgeMinted(address user,uint256 level,uint256 reward)"
 ];
-
-const coreContract = new ethers.Contract(
-  process.env.CORE_CONTRACT_ADDRESS,
-  coreAbi,
-  provider
-);
+const coreContract = new ethers.Contract(process.env.CORE_CONTRACT_ADDRESS, coreAbi, provider);
 
 /* ================= PREDICTION CONTRACT ================= */
 const predictAbi = [
@@ -51,38 +43,26 @@ const predictAbi = [
   "event PredictionWin(address indexed user,uint256 indexed predictionId,uint256 reward)",
   "event PredictionResolved(uint256 indexed predictionId,uint8 correctChoice)"
 ];
+const predictContract = new ethers.Contract(process.env.PREDICT_CONTRACT_ADDRESS, predictAbi, provider);
 
-const predictContract = new ethers.Contract(
-  process.env.PREDICT_CONTRACT_ADDRESS,
-  predictAbi,
-  provider
-);
-
-/* ================= ADD HISTORY ================= */
+/* ================= HELPERS ================= */
 async function addPointsHistory(address, gained) {
   if (gained <= 0) return;
   try {
-    await PointsHistory.create({
-      address: address.toLowerCase(),
-      points: gained,
-      createdAt: new Date()
-    });
+    await PointsHistory.create({ address: address.toLowerCase(), points: gained, createdAt: new Date() });
   } catch (err) {
     console.error("Add points history error:", err);
   }
 }
 
-/* ================= ADD HISTORY WITH REFERRAL ================= */
 async function addPointsHistoryWithReferral(address, gained) {
   if (gained <= 0) return;
   const user = await User.findOne({ address: address.toLowerCase() });
   if (!user) return;
 
-  // Начисляем пользователю
   await addPointsHistory(address, gained);
   await User.updateOne({ address: address.toLowerCase() }, { $inc: { points: gained } });
 
-  // Если есть реферер, начисляем 20%
   if (user.referrer) {
     const bonus = Math.floor(gained * 0.2);
     await addPointsHistory(user.referrer, bonus);
@@ -90,10 +70,8 @@ async function addPointsHistoryWithReferral(address, gained) {
   }
 }
 
-/* ================= SYNC USER ================= */
 async function syncUserData(address) {
   address = address.toLowerCase();
-
   const pointsBN = await coreContract.points(address);
   const streakBN = await coreContract.streak(address);
 
@@ -102,16 +80,10 @@ async function syncUserData(address) {
 
   const badges = [];
   for (let i = 1; i <= 10; i++) {
-    const minted = await coreContract.badgeMinted(address, i);
-    if (minted) badges.push(i);
+    if (await coreContract.badgeMinted(address, i)) badges.push(i);
   }
 
-  await User.updateOne(
-    { address },
-    { $set: { points: totalPoints, streak, badges } },
-    { upsert: true }
-  );
-
+  await User.updateOne({ address }, { $set: { points: totalPoints, streak, badges } }, { upsert: true });
   return await User.findOne({ address });
 }
 
@@ -120,58 +92,34 @@ function startCoreListener() {
   console.log("Core listener started");
 
   coreContract.on("CheckedIn", async (userAddr, newStreak, totalPoints) => {
+    const address = userAddr.toLowerCase();
+    const streak = Number(newStreak);
+    const reward = 10 + streak * 2;
     try {
-      const address = userAddr.toLowerCase();
-      const streak = Number(newStreak);
-      const total = Number(totalPoints);
-      const reward = 10 + (streak * 2);
-
       await addPointsHistoryWithReferral(address, reward);
-
-      await User.updateOne(
-        { address },
-        { $set: { points: total, streak } },
-        { upsert: true }
-      );
-
+      await User.updateOne({ address }, { $set: { points: Number(totalPoints), streak } }, { upsert: true });
     } catch (err) {
       console.error("CheckedIn error:", err);
-    }
-  });
-
-  coreContract.on("BadgeMinted", async (userAddr, level, reward) => {
-    try {
-      const address = userAddr.toLowerCase();
-      const gained = Number(reward);
-
-      await addPointsHistoryWithReferral(address, gained);
-
-      await User.updateOne(
-        { address },
-        { $inc: { points: gained } },
-        { upsert: true }
-      );
-
-    } catch (err) {
-      console.error("BadgeMinted error:", err);
     }
   });
 
   coreContract.on("PointsAdded", async (userAddr, amount) => {
     try {
       const address = userAddr.toLowerCase();
-      const gained = Number(amount);
-
-      await addPointsHistoryWithReferral(address, gained);
-
-      await User.updateOne(
-        { address },
-        { $inc: { points: gained } },
-        { upsert: true }
-      );
-
+      await addPointsHistoryWithReferral(address, Number(amount));
+      await User.updateOne({ address }, { $inc: { points: Number(amount) } }, { upsert: true });
     } catch (err) {
       console.error("PointsAdded error:", err);
+    }
+  });
+
+  coreContract.on("BadgeMinted", async (userAddr, level, reward) => {
+    try {
+      const address = userAddr.toLowerCase();
+      await addPointsHistoryWithReferral(address, Number(reward));
+      await User.updateOne({ address }, { $inc: { points: Number(reward) } }, { upsert: true });
+    } catch (err) {
+      console.error("BadgeMinted error:", err);
     }
   });
 }
@@ -182,28 +130,7 @@ function startPredictionListener() {
 
   predictContract.on("PredictionResolved", async (predictionId, correctChoice) => {
     try {
-      const prediction = await Prediction.findOneAndUpdate(
-        { contractId: Number(predictionId) },
-        { $set: { resolved: true, correctChoice: Number(correctChoice) } },
-        { new: true }
-      );
-
-      if (!prediction) return;
-
-      const usersPlayed = await User.find({
-        [`predictionsPlayed.${predictionId}`]: { $exists: true }
-      });
-
-      for (const user of usersPlayed) {
-        const choice = user.predictionsPlayed[predictionId];
-        if (choice === Number(correctChoice)) {
-          await Prediction.updateOne(
-            { contractId: Number(predictionId) },
-            { $set: { [`userWonMap.${user.address}`]: true } }
-          );
-        }
-      }
-
+      await Prediction.updateOne({ contractId: Number(predictionId) }, { $set: { resolved: true, correctChoice: Number(correctChoice) } });
     } catch (err) {
       console.error("PredictionResolved error:", err);
     }
@@ -212,112 +139,123 @@ function startPredictionListener() {
   predictContract.on("PredictionWin", async (user, predictionId, reward) => {
     try {
       const address = user.toLowerCase();
-
       await addPointsHistoryWithReferral(address, Number(reward));
       await User.updateOne({ address }, { $inc: { points: Number(reward) } });
-
-      await Prediction.updateOne(
-        { contractId: Number(predictionId) },
-        { $set: { [`userWonMap.${address}`]: true } }
-      );
-
+      await Prediction.updateOne({ contractId: Number(predictionId) }, { $set: { [`userWonMap.${address}`]: true } });
     } catch (err) {
       console.error("PredictionWin error:", err);
     }
   });
 }
 
-/* ================= PROFILE ROUTES ================= */
+/* ================= ROUTES ================= */
+// Profile
 app.get("/profile/:address", async (req, res) => {
   try {
     const profile = await syncUserData(req.params.address);
     res.json(profile);
   } catch (err) {
-    console.error("Profile GET error:", err);
     res.status(500).json({ error: "Profile error" });
   }
 });
 
+// Points history
 app.get("/points-history/:address", async (req, res) => {
   try {
-    const history = await PointsHistory.find({
-      address: req.params.address.toLowerCase()
-    }).sort({ createdAt: -1 }).limit(100);
-
+    const history = await PointsHistory.find({ address: req.params.address.toLowerCase() }).sort({ createdAt: -1 }).limit(100);
     res.json(history);
-  } catch (err) {
-    console.error("Points history GET error:", err);
+  } catch {
     res.status(500).json([]);
   }
 });
 
-/* ================= REFERRAL ROUTES ================= */
+// Leaderboard
+app.get("/leaderboard", async (req, res) => {
+  try {
+    const users = await User.find({}).sort({ points: -1 }).limit(50);
+    res.json(users);
+  } catch {
+    res.status(500).json([]);
+  }
+});
 
-// Получить реферальную ссылку
+// Stats
+app.get("/stats", async (req, res) => {
+  try {
+    const users = await User.countDocuments();
+    const points = await User.aggregate([{ $group: { _id: null, total: { $sum: "$points" } } }]);
+    const transactions = await PointsHistory.countDocuments();
+
+    res.json({
+      users,
+      points: points[0]?.total || 0,
+      transactions
+    });
+  } catch {
+    res.json({ users: 0, points: 0, transactions: 0 });
+  }
+});
+
+// Predictions
+app.get("/predictions", async (req, res) => {
+  try {
+    const preds = await Prediction.find({}).sort({ createdAt: -1 });
+    res.json(preds);
+  } catch {
+    res.json([]);
+  }
+});
+
+// Upload avatar
+app.post("/upload-avatar", upload.single("file"), async (req, res) => {
+  try {
+    const url = await uploadToIPFS(req.file.buffer);
+    res.json({ url });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Upload failed" });
+  }
+});
+
+/* ================= REFERRALS ================= */
 app.get("/referral/:address", async (req, res) => {
   try {
     const address = req.params.address.toLowerCase();
     const user = await User.findOne({ address });
     if (!user) return res.status(404).json({ error: "User not found" });
-
-    const referralLink = `${process.env.FRONTEND_URL}?ref=${address}`;
-    res.json({ referralLink });
-  } catch (err) {
-    console.error("Referral GET error:", err);
+    res.json({ referralLink: `${process.env.FRONTEND_URL}?ref=${address}` });
+  } catch {
     res.status(500).json({ error: "Referral error" });
   }
 });
 
-// Зарегистрировать нового пользователя с реферером
 app.post("/referral/register", async (req, res) => {
   try {
     const { address, referrer } = req.body;
-    const lowerAddress = address.toLowerCase();
-    const lowerReferrer = referrer?.toLowerCase();
-
-    const user = await User.findOne({ address: lowerAddress });
+    const user = await User.findOne({ address: address.toLowerCase() });
     if (!user) return res.status(404).json({ error: "User not found" });
-
-    if (lowerReferrer && lowerReferrer !== lowerAddress) {
-      if (!user.referrer) {
-        user.referrer = lowerReferrer;
-        await user.save();
-
-        await User.updateOne(
-          { address: lowerReferrer },
-          { $inc: { referralsCount: 1 } }
-        );
-
-        await Referral.create({ user: lowerAddress, referrer: lowerReferrer });
-      }
+    if (referrer && !user.referrer && referrer.toLowerCase() !== address.toLowerCase()) {
+      user.referrer = referrer.toLowerCase();
+      await user.save();
+      await User.updateOne({ address: referrer.toLowerCase() }, { $inc: { referralsCount: 1 } });
+      await Referral.create({ user: address.toLowerCase(), referrer: referrer.toLowerCase() });
     }
-
     res.json({ success: true });
-  } catch (err) {
-    console.error("Referral register error:", err);
-    res.status(500).json({ error: "Referral registration failed" });
+  } catch {
+    res.status(500).json({ error: "Referral register failed" });
   }
 });
-
-/* ================= REST OF ROUTES ================= */
-// — оставляем все остальные маршруты как были: /leaderboard, /upload-avatar, /profile POST, /stats, /predictions/create, /predictions
 
 /* ================= START SERVER ================= */
 async function startServer() {
   try {
     await mongoose.connect(process.env.MONGO_URL);
     console.log("Mongo connected");
-
     await provider.getBlockNumber();
     console.log("WebSocket ready");
-
     startCoreListener();
     startPredictionListener();
-
-    app.listen(process.env.PORT || 3001, () => {
-      console.log("Backend running");
-    });
-
+    app.listen(process.env.PORT || 3001, () => console.log("Backend running"));
   } catch (err) {
     console.error("Server start error:", err);
     process.exit(1);
