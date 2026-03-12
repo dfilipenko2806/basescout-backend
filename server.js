@@ -25,10 +25,8 @@ const upload = multer({
 });
 
 // === ИНИЦИАЛИЗАЦИЯ WebSocket PROVIDER ===
-// Добавлен таймаут на переподключение для стабильности на Railway
-const provider = new ethers.WebSocketProvider(process.env.RPC_URL, {
-  timeout: 10000
-});
+// ethers v6: второй аргумент должен быть network name или chainId, объект с timeout нельзя
+const provider = new ethers.WebSocketProvider(process.env.RPC_URL);
 
 /* ================= CORE CONTRACT ================= */
 const coreAbi = [
