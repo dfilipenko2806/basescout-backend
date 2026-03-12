@@ -268,6 +268,28 @@ app.post("/profile", async (req, res) => {
   }
 });
 
+/* ================= GLOBAL STATS ================= */
+app.get("/stats", async (req, res) => {
+  try {
+    // общее количество пользователей
+    const users = await User.countDocuments();
+
+    // общее количество очков
+    const pointsAgg = await User.aggregate([
+      { $group: { _id: null, totalPoints: { $sum: "$points" } } }
+    ]);
+    const points = pointsAgg[0]?.totalPoints || 0;
+
+    // общее количество транзакций (PointsHistory)
+    const transactions = await PointsHistory.countDocuments();
+
+    res.json({ users, points, transactions });
+  } catch (err) {
+    console.error("Stats GET error:", err);
+    res.status(500).json({ users: 0, points: 0, transactions: 0 });
+  }
+});
+
 /* ================= START SERVER ================= */
 async function startServer() {
   try {
