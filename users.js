@@ -11,22 +11,18 @@ export async function updateProfile(address, data) {
   address = normalize(address);
 
   const update = {};
+  if (data.nickname !== undefined) update.nickname = data.nickname;
+  if (data.avatar !== undefined) update.avatar = data.avatar;
 
-  if (data.nickname !== undefined) {
-    update.nickname = data.nickname;
-  }
-
-  if (data.avatar !== undefined) {
-    update.avatar = data.avatar;
-  }
-
-  // Используем findOneAndUpdate с upsert: true, чтобы создать пользователя если его нет
   return await User.findOneAndUpdate(
     { address },
-    { $set: update, $setOnInsert: { address } },
-    {
+    { 
+      $set: update,
+      $setOnInsert: { address } // создаём документ если нет
+    },
+    { 
       upsert: true,
-      returnDocument: "after" // Возвращаем обновленный документ
+      returnDocument: "after"
     }
   );
 }
