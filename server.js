@@ -333,6 +333,48 @@ app.get("/stats", async (req, res) => {
   });
 });
 
+/* ================= UPLOAD AVATAR ================= */
+
+app.post("/upload-avatar", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    const url = await uploadToIPFS(req.file.buffer);
+
+    res.json({ url });
+
+  } catch (err) {
+    console.error("Avatar upload error:", err);
+    res.status(500).json({ error: "Upload failed" });
+  }
+});
+
+
+/* ================= UPDATE PROFILE ================= */
+
+app.post("/profile", async (req, res) => {
+  try {
+    const { address, nickname, avatar } = req.body;
+
+    if (!address) {
+      return res.status(400).json({ error: "Address required" });
+    }
+
+    const updated = await updateProfile(address, {
+      nickname,
+      avatar
+    });
+
+    res.json(updated);
+
+  } catch (err) {
+    console.error("Profile update error:", err);
+    res.status(500).json({ error: "Profile update failed" });
+  }
+});
+
 /* ================= START SERVER ================= */
 
 async function startServer() {
