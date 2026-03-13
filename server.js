@@ -232,17 +232,52 @@ app.get("/referral/:address", async (req, res) => {
 
 app.post("/referral/register", async (req, res) => {
   try {
-    const { address, referrer } = req.body;
-    const user = await User.findOne({ address: address.toLowerCase() });
-    if (!user) return res.status(404).json({ error: "User not found" });
-    if (referrer && !user.referrer && referrer.toLowerCase() !== address.toLowerCase()) {
-      user.referrer = referrer.toLowerCase();
-      await user.save();
-      await User.updateOne({ address: referrer.toLowerCase() }, { $inc: { referralsCount: 1 } });
-      await Referral.create({ user: address.toLowerCase(), referrer: referrer.toLowerCase() });
+    let { address, referrer } = req.body;
+
+    address = address.toLowerCase();
+    referrer = referrer?.toLowerCase();
+
+    let user = await User.findOne({ address });
+
+    if (!user) {
+      user = await User.create({ address });
     }
+
+    if (!referrer) {
+      return res.json({ success: true });
+    }
+
+    if (referrer === address) {
+      return res.json({ success: true });
+    }
+
+    if (user.referrer) {
+      return res.json({ success: true });
+    }
+
+    const refUser = await User.findOne({ address: referrer });
+
+    if (!refUser) {
+      return res.json({ success: true });
+    }
+
+    user.referrer = referrer;
+    await user.save();
+
+    await User.updateOne(
+      { address: referrer },
+      { $inc: { referralsCount: 1 } }
+    );
+
+    await Referral.create({
+      user: address,
+      referrer
+    });
+
     res.json({ success: true });
-  } catch {
+
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Referral register failed" });
   }
 });
