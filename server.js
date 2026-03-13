@@ -210,10 +210,17 @@ app.get("/predictions", async (req, res) => {
 // Upload avatar
 app.post("/upload-avatar", upload.single("file"), async (req, res) => {
   try {
-    const url = await uploadToIPFS(req.file.buffer);
+
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    const url = await uploadToIPFS(req.file);
+
     res.json({ url });
+
   } catch (err) {
-    console.error(err);
+    console.error("Upload error:", err);
     res.status(500).json({ error: "Upload failed" });
   }
 });
