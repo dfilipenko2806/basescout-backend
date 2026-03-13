@@ -247,6 +247,29 @@ app.post("/referral/register", async (req, res) => {
   }
 });
 
+app.post("/profile", async (req, res) => {
+  try {
+    const { address, nickname, avatar } = req.body;
+
+    await User.updateOne(
+      { address: address.toLowerCase() },
+      {
+        $set: {
+          nickname: nickname || "",
+          avatar: avatar || ""
+        }
+      },
+      { upsert: true }
+    );
+
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Profile update failed" });
+  }
+});
+
 /* ================= START SERVER ================= */
 async function startServer() {
   try {
