@@ -9,6 +9,7 @@ import User from "./models/User.js";
 import PointsHistory from "./models/PointsHistory.js";
 import Prediction from "./models/Prediction.js";
 import Referral from "./models/Referral.js";
+import { uploadToIPFS } from "./upload.js";
 
 dotenv.config();
 
