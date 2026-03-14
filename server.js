@@ -23,7 +23,11 @@ const upload = multer({
   limits: { fileSize: 2 * 1024 * 1024 } // 2 MB
 });
 
-const provider = new ethers.WebSocketProvider(process.env.RPC_URL);
+const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+
+provider.on("error", (err) => {
+  console.error("RPC Provider error:", err);
+});
 
 /* ================= CORE CONTRACT ================= */
 const coreAbi = [
@@ -317,8 +321,6 @@ async function startServer() {
   try {
     await mongoose.connect(process.env.MONGO_URL);
     console.log("Mongo connected");
-    await provider.getBlockNumber();
-    console.log("WebSocket ready");
     startCoreListener();
     startPredictionListener();
     app.listen(process.env.PORT || 3001, () => console.log("Backend running"));
