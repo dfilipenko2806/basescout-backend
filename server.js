@@ -23,7 +23,7 @@ const upload = multer({
   limits: { fileSize: 2 * 1024 * 1024 } // 2 MB
 });
 
-const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+const provider = new ethers.WebSocketProvider(process.env.RPC_WS);
 
 provider.on("error", (err) => {
   console.error("RPC Provider error:", err);
