@@ -315,6 +315,33 @@ app.post("/profile", async (req, res) => {
   }
 });
 
+app.post("/prediction/play", async (req, res) => {
+  const { address, predictionId, choice } = req.body;
+  const pred = await Prediction.findOne({ contractId: predictionId });
+  const now = new Date();
+
+  if (!pred) return res.status(404).json({ error: "Prediction not found" });
+
+  if (now > pred.playDeadline) {
+    return res.status(400).json({ error: "Participation time is over" });
+  }
+
+  // Вызываем контракт playPrediction
+  try {
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+
+    const tx = await contract.playPrediction(predictionId, choice);
+    await tx.wait();
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.reason || err.message });
+  }
+});
+
 /* ================= START SERVER ================= */
 async function startServer() {
   try {
