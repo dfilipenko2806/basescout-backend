@@ -28,7 +28,12 @@ export async function updateProfile(address, data) {
   );
 }
 
+/**
+ * Синхронизация суммы поинтов пользователя из PointsHistory
+ */
 export async function syncUserPoints(address) {
+  address = normalize(address);
+
   const history = await PointsHistory.find({ address });
   const points = history.reduce((sum, h) => sum + (h.points || 0), 0);
 
@@ -45,7 +50,7 @@ export async function syncUserPoints(address) {
 export async function getProfile(address) {
   address = normalize(address);
 
-  const user = await User.findOne({ address }) || { address };
+  const user = await User.findOne({ address }) || {};
 
   // Суммируем все points из истории
   const agg = await PointsHistory.aggregate([
@@ -56,13 +61,22 @@ export async function getProfile(address) {
   const totalPoints = agg[0]?.totalPoints || 0;
 
   return {
-    ...user.toObject?.() || user,
-    points: totalPoints
+    address,
+    nickname: user.nickname || "",
+    avatar: user.avatar || null,
+    points: totalPoints,
+    streak: user.streak || 0,
+    badges: user.badges || [],
+    referrer: user.referrer || null,
+    referralsCount: user.referralsCount || 0,
+    correctPredictions: user.correctPredictions || 0,
+    totalPredictions: user.totalPredictions || 0,
+    predictionsWon: user.predictionsWon || 0
   };
 }
 
 /**
- * Лидерборд по сумме очков из истории
+ * Лидерборд по сумме очков из истории с подтягиванием всех нужных полей
  */
 export async function getLeaderboard() {
   const agg = await PointsHistory.aggregate([
@@ -80,7 +94,9 @@ export async function getLeaderboard() {
     {
       $addFields: {
         nickname: { $arrayElemAt: ["$userInfo.nickname", 0] },
-        avatar: { $arrayElemAt: ["$userInfo.avatar", 0] }
+        avatar: { $arrayElemAt: ["$userInfo.avatar", 0] },
+        streak: { $arrayElemAt: ["$userInfo.streak", 0] },
+        referralsCount: { $arrayElemAt: ["$userInfo.referralsCount", 0] }
       }
     },
     { $project: { userInfo: 0 } }
@@ -90,6 +106,8 @@ export async function getLeaderboard() {
     address: u._id,
     points: u.totalPoints,
     nickname: u.nickname || "",
-    avatar: u.avatar || ""
+    avatar: u.avatar || "",
+    streak: u.streak || 0,
+    referralsCount: u.referralsCount || 0
   }));
 }
