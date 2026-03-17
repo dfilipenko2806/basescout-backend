@@ -114,7 +114,7 @@ function startCoreListener() {
     const reward = 10 + streak * 2;
     try {
       await addPointsHistoryWithReferral(address, reward);
-      await User.updateOne({ address }, { $set: { points: Number(totalPoints), streak } }, { upsert: true });
+      await User.updateOne({ address }, { $set: { streak } }, { upsert: true });
     } catch (err) {
       console.error("CheckedIn error:", err);
     }
@@ -124,7 +124,7 @@ function startCoreListener() {
     try {
       const address = userAddr.toLowerCase();
       await addPointsHistoryWithReferral(address, Number(amount));
-      await User.updateOne({ address }, { $inc: { points: Number(amount) } }, { upsert: true });
+      await User.updateOne({ address }, { $set: { streak, badges } }, { upsert: true });
     } catch (err) {
       console.error("PointsAdded error:", err);
     }
@@ -133,8 +133,8 @@ function startCoreListener() {
   coreContract.on("BadgeMinted", async (userAddr, level, reward) => {
     try {
       const address = userAddr.toLowerCase();
-      await addPointsHistoryWithReferral(address, Number(reward));
-      await User.updateOne({ address }, { $inc: { points: Number(reward) } }, { upsert: true });
+      await addPointsHistoryWithReferral(address, Number(amount));
+      await User.updateOne({ address }, { $set: { streak, badges } }, { upsert: true });
     } catch (err) {
       console.error("BadgeMinted error:", err);
     }
