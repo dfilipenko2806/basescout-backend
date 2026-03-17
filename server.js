@@ -145,8 +145,7 @@ function startPredictionListener() {
     try {
       const address = user.toLowerCase();
       await addPointsHistoryWithReferral(address, Number(reward));
-      await User.updateOne({ address }, { $inc: { points: Number(reward), predictionsWon: 1 } });
-      await Prediction.updateOne({ contractId: Number(predictionId) }, { $set: { [`userWonMap.${address}`]: true } });
+      await User.updateOne({ address }, { $inc: { predictionsWon: 1 } });
     } catch (err) {
       console.error("PredictionWin error:", err);
     }
