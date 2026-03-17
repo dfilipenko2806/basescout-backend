@@ -28,6 +28,17 @@ export async function updateProfile(address, data) {
   );
 }
 
+export async function syncUserPoints(address) {
+  const history = await PointsHistory.find({ address });
+  const points = history.reduce((sum, h) => sum + (h.points || 0), 0);
+
+  return await User.findOneAndUpdate(
+    { address },
+    { $set: { points } },
+    { upsert: true, returnDocument: "after" }
+  );
+}
+
 /**
  * Получение профиля пользователя с суммой поинтов из истории
  */
