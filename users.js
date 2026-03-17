@@ -1,4 +1,5 @@
 import User from "./models/User.js";
+import PointsHistory from "./models/PointsHistory.js";
 
 function normalize(address) {
   return address.toLowerCase();
@@ -18,7 +19,7 @@ export async function updateProfile(address, data) {
     { address },
     { 
       $set: update,
-      $setOnInsert: { address } // создаём документ если нет
+      $setOnInsert: { address } 
     },
     { 
       upsert: true,
@@ -28,37 +29,56 @@ export async function updateProfile(address, data) {
 }
 
 /**
- * Обновление onchain-данных: points, streak, badges
- */
-export async function updateOnchainData(address, points, streak, badges) {
-  address = normalize(address);
-
-  return await User.findOneAndUpdate(
-    { address },
-    {
-      $set: { points, streak, badges },
-      $setOnInsert: { address }
-    },
-    {
-      upsert: true,
-      returnDocument: "after"
-    }
-  );
-}
-
-/**
- * Получение профиля по адресу
+ * Получение профиля пользователя с суммой поинтов из истории
  */
 export async function getProfile(address) {
   address = normalize(address);
-  return await User.findOne({ address });
+
+  const user = await User.findOne({ address }) || { address };
+
+  // Суммируем все points из истории
+  const agg = await PointsHistory.aggregate([
+    { $match: { address } },
+    { $group: { _id: null, totalPoints: { $sum: "$points" } } }
+  ]);
+
+  const totalPoints = agg[0]?.totalPoints || 0;
+
+  return {
+    ...user.toObject?.() || user,
+    points: totalPoints
+  };
 }
 
 /**
- * Лидерборд по очкам
+ * Лидерборд по сумме очков из истории
  */
 export async function getLeaderboard() {
-  return await User.find()
-    .sort({ points: -1 })
-    .limit(100);
+  const agg = await PointsHistory.aggregate([
+    { $group: { _id: "$address", totalPoints: { $sum: "$points" } } },
+    { $sort: { totalPoints: -1 } },
+    { $limit: 100 },
+    {
+      $lookup: {
+        from: "users",
+        localField: "_id",
+        foreignField: "address",
+        as: "userInfo"
+      }
+    },
+    {
+      $addFields: {
+        nickname: { $arrayElemAt: ["$userInfo.nickname", 0] },
+        avatar: { $arrayElemAt: ["$userInfo.avatar", 0] }
+      }
+    },
+    { $project: { userInfo: 0 } }
+  ]);
+
+  return agg.map(u => ({
+    address: u._id,
+    points: u.totalPoints,
+    nickname: u.nickname || "",
+    avatar: u.avatar || ""
+  }));
 }
