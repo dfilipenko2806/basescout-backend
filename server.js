@@ -66,12 +66,13 @@ async function addPointsHistoryWithReferral(address, gained) {
   if (!user) return;
 
   await addPointsHistory(address, gained);
-  await User.updateOne({ address: address.toLowerCase() }, { $inc: { points: gained } });
+  // Убираем $inc на points
+  // await User.updateOne({ address: address.toLowerCase() }, { $inc: { points: gained } });
 
   if (user.referrer) {
     const bonus = Math.floor(gained * 0.2);
     await addPointsHistory(user.referrer, bonus);
-    await User.updateOne({ address: user.referrer }, { $inc: { points: bonus } });
+    // await User.updateOne({ address: user.referrer }, { $inc: { points: bonus } });
   }
 }
 
@@ -97,7 +98,7 @@ async function syncUserData(address) {
 
   await User.updateOne(
     { address },
-    { $set: { points: totalPoints, streak, badges } },
+    { $set: { streak, badges } }, // points больше не трогаем
     { upsert: true }
   );
 
@@ -124,6 +125,15 @@ function startCoreListener() {
     try {
       const address = userAddr.toLowerCase();
       await addPointsHistoryWithReferral(address, Number(amount));
+
+      const streakBN = await coreContract.streak(address);
+      const streak = Number(streakBN);
+
+      const badges = [];
+      for (let i = 1; i <= 10; i++) {
+        if (await coreContract.badgeMinted(address, i)) badges.push(i);
+      }
+
       await User.updateOne({ address }, { $set: { streak, badges } }, { upsert: true });
     } catch (err) {
       console.error("PointsAdded error:", err);
@@ -133,7 +143,16 @@ function startCoreListener() {
   coreContract.on("BadgeMinted", async (userAddr, level, reward) => {
     try {
       const address = userAddr.toLowerCase();
-      await addPointsHistoryWithReferral(address, Number(amount));
+      await addPointsHistoryWithReferral(address, Number(reward));
+
+      const streakBN = await coreContract.streak(address);
+      const streak = Number(streakBN);
+
+      const badges = [];
+      for (let i = 1; i <= 10; i++) {
+        if (await coreContract.badgeMinted(address, i)) badges.push(i);
+      }
+
       await User.updateOne({ address }, { $set: { streak, badges } }, { upsert: true });
     } catch (err) {
       console.error("BadgeMinted error:", err);
