@@ -77,10 +77,17 @@ async function addPointsHistoryWithReferral(address, gained) {
 
 async function syncUserData(address) {
   address = address.toLowerCase();
-  const pointsBN = await coreContract.points(address);
-  const streakBN = await coreContract.streak(address);
 
-  const totalPoints = Number(pointsBN);
+  // 🔹 Суммируем поинты из истории
+  const pointsAgg = await PointsHistory.aggregate([
+    { $match: { address } },
+    { $group: { _id: null, total: { $sum: "$points" } } }
+  ]);
+
+  const totalPoints = pointsAgg[0]?.total || 0;
+
+  // Стрик и бейджи оставляем с контракта
+  const streakBN = await coreContract.streak(address);
   const streak = Number(streakBN);
 
   const badges = [];
@@ -88,7 +95,12 @@ async function syncUserData(address) {
     if (await coreContract.badgeMinted(address, i)) badges.push(i);
   }
 
-  await User.updateOne({ address }, { $set: { points: totalPoints, streak, badges } }, { upsert: true });
+  await User.updateOne(
+    { address },
+    { $set: { points: totalPoints, streak, badges } },
+    { upsert: true }
+  );
+
   return await User.findOne({ address });
 }
 
@@ -176,9 +188,30 @@ app.get("/points-history/:address", async (req, res) => {
 // Leaderboard
 app.get("/leaderboard", async (req, res) => {
   try {
-    const users = await User.find({}).sort({ points: -1 }).limit(50);
-    res.json(users);
-  } catch {
+    const leaderboard = await PointsHistory.aggregate([
+      { $group: { _id: "$address", points: { $sum: "$points" } } },
+      { $sort: { points: -1 } },
+      { $limit: 50 }
+    ]);
+
+    // Подтягиваем nickname и avatar из User
+    const users = await User.find({
+      address: { $in: leaderboard.map(u => u._id) }
+    });
+
+    const result = leaderboard.map(u => {
+      const user = users.find(x => x.address === u._id);
+      return {
+        address: u._id,
+        points: u.points,
+        nickname: user?.nickname || "",
+        avatar: user?.avatar || ""
+      };
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error(err);
     res.status(500).json([]);
   }
 });
@@ -187,7 +220,7 @@ app.get("/leaderboard", async (req, res) => {
 app.get("/stats", async (req, res) => {
   try {
     const users = await User.countDocuments();
-    const points = await User.aggregate([{ $group: { _id: null, total: { $sum: "$points" } } }]);
+    const points = await PointsHistory.aggregate([{ $group: { _id: null, total: { $sum: "$points" } } }]);
     const transactions = await PointsHistory.countDocuments();
 
     res.json({
